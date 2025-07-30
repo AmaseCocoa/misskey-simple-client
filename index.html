@@ -84,6 +84,10 @@
         <label><input type="checkbox" id="avatarToggle"> アバターを表示</label>
         <label><input type="checkbox" id="showEmptyNotes"> 本文のないノートを表示</label>
         <label>
+            文字列を含む場合のみ表示 (カンマ区切り): 
+            <input type="text" id="filterText" placeholder="津波,津波警報">
+        </label>
+        <label>
             <select id="timeline">
                 <option value="homeTimeline" selected>ホームタイムライン</option>
                 <option value="localTimeline">ローカルタイムライン</option>
@@ -107,6 +111,7 @@
         const postArea = document.getElementById('postArea');
         const sendButton = document.getElementById('sendButton');
         const connectButton = document.getElementById('connectButton');
+        const filterText = document.getElementById('filterText');
 
         addEventListener("DOMContentLoaded", (event) => {
             document.getElementById('serverHost').value = localStorage.getItem('y58ZX54SEJ') || '';
@@ -118,7 +123,11 @@
 
         const addMessage = (body) => {
             const { user, text } = body;
+            const filter = filterText.value.trim();
+            const filters = filter.split(',').map(item => item.trim());
+
             if (!text && !showEmptyNotes.checked) return;
+            if (filters.length > 0 && !filters.some(f => text.includes(f))) return;
 
             const message = document.createElement('div');
             message.className = 'message';
@@ -173,6 +182,7 @@
             document.getElementById('serverHost').disabled = !isEditable;
             document.getElementById('apiToken').disabled = !isEditable;
             document.getElementById('timeline').disabled = !isEditable;
+            document.getElementById('apiToken').hidden = !isEditable;
             connectButton.textContent = isEditable ? '接続' : '切断';
         };
 
@@ -185,7 +195,7 @@
                 const host = document.getElementById('serverHost').value;
                 const apiToken = document.getElementById('apiToken').value;
                 const timeline = document.getElementById('timeline').value;
-                
+
                 localStorage.setItem('y58ZX54SEJ', host);
                 localStorage.setItem('hz0wwDiRQV', apiToken);
                 localStorage.setItem('timeline', timeline);
