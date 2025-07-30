@@ -1,2 +1,2 @@
-# misskey-simple-client
-One-file Misskey client
+# Simple Client for Misskey
+Misskey用のシンプルなクライアント
