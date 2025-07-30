@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Misskey Simple Client</title>
+    <style>
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        #messages {
+            max-height: 70%;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 5px;
+            box-sizing: border-box;
+        }
+
+        .message {
+            border: 1px solid #ccc;
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+
+        .message-content {
+            flex: 1;
+        }
+
+        .text {
+            margin-top: 5px;
+        }
+
+        .settings {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin: 10px;
+        }
+
+        #postArea {
+            width: calc(100% - 20px);
+            margin: 10px;
+            padding: 5px;
+            box-sizing: border-box;
+        }
+
+        #sendButton {
+            width: 100%;
+            margin: 10px;
+            padding: 10px;
+        }
+
+        @media (min-width: 600px) {
+            .settings {
+                flex-direction: row;
+                flex-wrap: wrap;
+            }
+            #postArea {
+                width: 95%;
+            }
+            #sendButton {
+                width: auto;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="settings">
+        <label><input type="checkbox" id="avatarToggle"> アバターを表示</label>
+        <label><input type="checkbox" id="showEmptyNotes"> 本文のないノートを表示</label>
+        <label>
+            <select id="timeline">
+                <option value="homeTimeline" selected>ホームタイムライン</option>
+                <option value="localTimeline">ローカルタイムライン</option>
+                <option value="hybridTimeline">ソーシャルタイムライン</option>
+                <option value="globalTimeline">グローバルタイムライン</option>
+            </select>
+        </label>
+        <input type="text" id="serverHost" placeholder="ホスト">
+        <input type="text" id="apiToken" placeholder="APIトークン">
+        <button id="connectButton">接続</button>
+        <a href="https://github.com/AmaseCocoa/misskey-simple-client" rel="noopener noreferer" target="_blank" style="margin-left: auto; margin-right: auto;">GitHub</a>
+    </div>
+    <textarea id="postArea" rows="3" placeholder="ここに投稿を入力..."></textarea>
+    <button id="sendButton">送信</button>
+    <div id="messages"></div>
+
+    <script>
+        const messagesDiv = document.getElementById('messages');
+        const avatarToggle = document.getElementById('avatarToggle');
+        const showEmptyNotes = document.getElementById('showEmptyNotes');
+        const postArea = document.getElementById('postArea');
+        const sendButton = document.getElementById('sendButton');
+        const connectButton = document.getElementById('connectButton');
+
+        addEventListener("DOMContentLoaded", (event) => {
+            document.getElementById('serverHost').value = localStorage.getItem('y58ZX54SEJ') || '';
+            document.getElementById('apiToken').value = localStorage.getItem('hz0wwDiRQV') || '';
+            document.getElementById('timeline').value = localStorage.getItem('timeline') || 'homeTimeline';
+        });
+
+        let socket;
+
+        const addMessage = (body) => {
+            const { user, text } = body;
+            if (!text && !showEmptyNotes.checked) return;
+
+            const message = document.createElement('div');
+            message.className = 'message';
+            const messageContent = document.createElement('div');
+            messageContent.className = 'message-content';
+
+            if (avatarToggle.checked && user.avatarUrl) {
+                const avatarImg = document.createElement('img');
+                avatarImg.src = user.avatarUrl;
+                avatarImg.alt = 'Avatar';
+                avatarImg.className = 'avatar';
+                messageContent.appendChild(avatarImg);
+            }
+
+            const userInfo = document.createElement('div');
+            userInfo.className = 'user-info';
+            userInfo.textContent = escape_html(`${user.name || ''} @${user.username || ''}${user.host ? `@${user.host}` : ''}`);
+            messageContent.appendChild(userInfo);
+            message.appendChild(messageContent);
+
+            if (text) {
+                const messageText = document.createElement('div');
+                messageText.className = 'text';
+                messageText.textContent = escape_html(text);
+                message.appendChild(messageText);
+            }
+
+            messagesDiv.insertBefore(message, messagesDiv.firstChild);
+            if (messagesDiv.childNodes.length >= 30) messagesDiv.removeChild(messagesDiv.lastChild);
+        };
+
+        const sendMessage = () => {
+            const messageText = postArea.value.trim();
+            const host = document.getElementById('serverHost').value;
+            const apiToken = document.getElementById('apiToken').value;
+            if (messageText) {
+                fetch(`https://${host}/api/notes/create`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: messageText,
+                        'i': apiToken
+                    })
+                });
+                postArea.value = '';
+            }
+        };
+
+        const toggleEditability = (isEditable) => {
+            document.getElementById('serverHost').disabled = !isEditable;
+            document.getElementById('apiToken').disabled = !isEditable;
+            document.getElementById('timeline').disabled = !isEditable;
+            connectButton.textContent = isEditable ? '接続' : '切断';
+        };
+
+        connectButton.addEventListener('click', () => {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.close();
+                toggleEditability(true);
+                socket = null;
+            } else {
+                const host = document.getElementById('serverHost').value;
+                const apiToken = document.getElementById('apiToken').value;
+                const timeline = document.getElementById('timeline').value;
+                
+                localStorage.setItem('y58ZX54SEJ', host);
+                localStorage.setItem('hz0wwDiRQV', apiToken);
+                localStorage.setItem('timeline', timeline);
+
+                socket = new WebSocket(`wss://${host}/streaming?i=${apiToken}`);
+
+                socket.onopen = () => {
+                    toggleEditability(false);
+                    socket.send(JSON.stringify({
+                        type: "connect",
+                        body: { channel: timeline, id: "1", params: { withRenotes: true, minimize: false } }
+                    }));
+                };
+
+                socket.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'channel' && data.body?.type === 'note') {
+                        addMessage(data.body.body);
+                    }
+                };
+
+                socket.onclose = () => {
+                    toggleEditability(true);
+                };
+
+                socket.onerror = (error) => alert('Error:', error);
+            }
+        });
+
+        sendButton.addEventListener('click', sendMessage);
+        postArea.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        });
+
+        function escape_html(string) {
+            if (typeof string !== 'string') {
+                return string;
+            }
+            return string.replace(/[&'`"<>]/g, function (match) {
+                return {
+                    '&': '&amp;',
+                    "'": '&#x27;',
+                    '`': '&#x60;',
+                    '"': '&quot;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                }[match]
+            });
+        }
+    </script>
+</body>
+
+</html>
